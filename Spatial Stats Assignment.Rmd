@@ -1,0 +1,151 @@
+---
+title: "Spatial Stats Assignment"
+author: "Gladness Khoza"
+date: "16/10/2019"
+output: word_document
+---
+
+```{r setup}
+
+#Loading Packages
+library(sp)
+library(maptools)
+library(classInt)
+library(spdep)
+library(rgdal)
+library(rgeos)
+library(tmap)
+library(raster)
+library(tmap)
+library(leaflet)
+library(RColorBrewer)
+
+#Loading Shapefile
+
+SHP<-shapefile("Drug&Crime.shp")
+
+
+SHP$DrugAbuse=as.numeric(SHP$DrugAbuse)
+SHP$Crime=as.numeric(SHP$Crime)
+summary(SHP)
+
+```
+
+
+```{r}
+# Data Exploration
+
+plot(SHP)
+par(mfrow= c(1,1))
+qtm(SHP, fill = "DrugAbuse")
+qtm(SHP, fill = "Crime")
+```
+
+```{r}
+#Choropleth Map
+
+#Drug Abuse
+tm_shape(SHP) + tm_fill("DrugAbuse", palette = "Blues", style = "quantile", n =5) + tm_borders(alpha = .4) + tm_compass() + tm_layout(title = "Drug Abuse in Gauteng", frame = TRUE) + tm_legend(legend.position = c("left", "top"))
+
+#Crime
+tm_shape(SHP) + tm_fill("Crime", palette = "Blues", style = "quantile", n =5) + tm_borders(alpha = .4) + tm_compass() + tm_layout(title = "Drug Abuse related Crime in Gauteng", frame = TRUE) + tm_legend(legend.position = c("left", "top"))
+```
+```{r}
+#Calculating Neighbours
+
+neighbours<- poly2nb(SHP)
+listw<-nb2listw(neighbours)
+listw
+summary(neighbours)
+
+```
+
+
+```{r}
+#Moran's I Test
+
+#Drug Abuse Test
+moran.test(SHP$DrugAbuse,listw)
+morandrug<- moran.plot(SHP$DrugAbuse,listw = nb2listw(neighbours, style = "W"))
+localdrug<- localmoran(x= SHP$DrugAbuse, listw = nb2listw (neighbours, style = "W"))
+morandrug <- cbind(SHP, localdrug)
+tm_shape(morandrug) + tm_fill("Ii", style = "quantile", title = "local moran Drug map")
+
+#Crime Test
+moran.test(SHP$Crime,listw)
+moran.plot(SHP$Crime, listw = nb2listw(neighbours, style = "W"))
+
+localcrime<- localmoran(x= SHP$Crime, listw = nb2listw (neighbours, style = "W"))
+morancrime <- cbind(SHP, localcrime)
+tm_shape(morancrime) + tm_fill("Ii", style = "quantile", title = "local moran Crime map")
+
+
+```
+
+```{r}
+#Plotting Models
+
+#Linear Model
+
+model<-lm(SHP$DrugAbuse~SHP$Crime)
+plot(SHP$DrugAbuse,SHP$Crime, xlab = "Drug Abuse", ylab = "Drug Abuse related Crime")
+abline(model,col = "red", lwd =2)
+
+#Summary of the Model
+
+summary(model)
+```
+
+```{r}
+#Testing Spatial Autocorrelation using Queen Adjacency
+
+xy <- coordinates(SHP)
+neighbour = poly2nb(SHP)
+W<-nb2listw(neighbour)
+```
+
+```{r}
+#Moran Regression Model
+
+moran.lm<- lm.morantest(model, W, alternative = "greater")
+print(moran.lm)
+
+```
+
+
+```{r}
+
+#Testing All Models
+
+LM<-lm.LMtests(model,W,test = "all")
+print(LM)
+```
+
+```{r}
+#Spatial Lag Model
+
+SLM = lagsarlm(DrugAbuse~Crime, data = SHP, W, tol.solve = 1.0e-30)
+summary(SLM)
+```
+
+
+```{r}
+#SLM Residuals
+
+SHP$residuals<-residuals(SLM)
+moran.mc(SHP$residuals,W, 999)
+```
+
+```{r}
+#Spatial Error Model
+
+SEM= errorsarlm(DrugAbuse~Crime, data = SHP, W, tol.solve = 1.0e-30)
+summary(SEM)
+```
+```{r}
+#SEM Residuals
+
+SHP$residuals2<- residuals(SEM)
+moran.mc(SHP$residuals2, W, 999)
+```
+
